@@ -40,6 +40,8 @@ impl Blockchain {
             block.increment_nonce();
         }
         block.update_hash();
+        // Make sure we don't skip an index
+        assert_eq!(block.index() as usize, self.block_chain.len());
         self.block_chain.push(block);
     }
 
