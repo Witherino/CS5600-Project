@@ -3,12 +3,13 @@ use lazy_static::*;
 use sha2::{Sha256, Digest};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 use crate::blockchain::transaction::{Transaction, NULL_TRANSACTION};
 
 const HASH_SIZE: usize = 32;
 const NULL_HASH: &'static [u8; HASH_SIZE] = b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     index: u64,
     timestamp: DateTime<Utc>,

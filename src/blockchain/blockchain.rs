@@ -1,6 +1,7 @@
 use crate::blockchain::{Block, GENESIS_BLOCK, Transaction};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Blockchain {
     block_chain: Vec<Block>,
     difficulty: u8,
