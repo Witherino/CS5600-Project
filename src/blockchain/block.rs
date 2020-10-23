@@ -3,14 +3,13 @@ use lazy_static::*;
 use sha2::{Sha256, Digest};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
-use serde::ser::{Serialize, Serializer, SerializeStruct};
-use serde::{Deserialize};
+use serde::{Serialize, Deserialize};
 use crate::blockchain::transaction::{Transaction, NULL_TRANSACTION};
 
 const HASH_SIZE: usize = 32;
 const NULL_HASH: &'static [u8; HASH_SIZE] = b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Block {
     index: u64,
     timestamp: DateTime<Utc>,
@@ -20,21 +19,21 @@ pub struct Block {
     nonce: u64,
 }
 
-impl Serialize for Block {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-    {
-        let mut blockchain = serializer.serialize_struct("Block", 6)?;
-        blockchain.serialize_field("index", &self.index)?;
-        blockchain.serialize_field("timestamp", &self.timestamp)?;
-        blockchain.serialize_field("hash", &self.hash)?;
-        blockchain.serialize_field("previous_hash", &self.previous_hash)?;
-        blockchain.serialize_field("transaction", &self.transaction)?;
-        blockchain.serialize_field("nonce", &self.nonce)?;
-        blockchain.end()
-    }
-}
+// impl Serialize for Block {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//         where
+//             S: Serializer,
+//     {
+//         let mut blockchain = serializer.serialize_struct("Block", 6)?;
+//         blockchain.serialize_field("index", &self.index)?;
+//         blockchain.serialize_field("timestamp", &self.timestamp)?;
+//         blockchain.serialize_field("hash", &self.hash)?;
+//         blockchain.serialize_field("previous_hash", &self.previous_hash)?;
+//         blockchain.serialize_field("transaction", &self.transaction)?;
+//         blockchain.serialize_field("nonce", &self.nonce)?;
+//         blockchain.end()
+//     }
+// }
 
 impl Block {
     // Update hash member from other members

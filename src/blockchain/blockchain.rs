@@ -1,24 +1,24 @@
 use crate::blockchain::{Block, GENESIS_BLOCK, Transaction};
-use serde::ser::{Serialize, Serializer, SerializeStruct};
-use serde::{Deserialize};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Blockchain {
     block_chain: Vec<Block>,
     difficulty: u8,
 }
 
-impl Serialize for Blockchain {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-    {
-        let mut blockchain = serializer.serialize_struct("Blockchain", 2)?;
-        blockchain.serialize_field("block_chain", &self.block_chain)?;
-        blockchain.serialize_field("difficulty", &self.difficulty)?;
-        blockchain.end()
-    }
-}
+// impl Serialize for Blockchain {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//         where
+//             S: Serializer,
+//     {
+//         let mut blockchain = serializer.serialize_struct("Blockchain", 2)?;
+//         blockchain.serialize_field("block_chain", &self.block_chain)?;
+//         blockchain.serialize_field("difficulty", &self.difficulty)?;
+//         blockchain.end()
+//     }
+// }
 
 impl Blockchain {
     fn block_meets_difficulty(&self, block: &Block) -> bool {
