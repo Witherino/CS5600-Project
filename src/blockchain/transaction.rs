@@ -1,10 +1,10 @@
-
+use serde::{Serialize, Deserialize};
 // TODO: Replace PeerId type with LibP2P peer id type
 pub type PeerId = u64;
 
 pub type CurrencyType = u64;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 #[repr(packed)]
 pub struct Transaction {
     sender: PeerId,
