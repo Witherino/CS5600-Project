@@ -19,22 +19,6 @@ pub struct Block {
     nonce: u64,
 }
 
-// impl Serialize for Block {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//         where
-//             S: Serializer,
-//     {
-//         let mut blockchain = serializer.serialize_struct("Block", 6)?;
-//         blockchain.serialize_field("index", &self.index)?;
-//         blockchain.serialize_field("timestamp", &self.timestamp)?;
-//         blockchain.serialize_field("hash", &self.hash)?;
-//         blockchain.serialize_field("previous_hash", &self.previous_hash)?;
-//         blockchain.serialize_field("transaction", &self.transaction)?;
-//         blockchain.serialize_field("nonce", &self.nonce)?;
-//         blockchain.end()
-//     }
-// }
-
 impl Block {
     // Update hash member from other members
     pub fn update_hash(&mut self) {

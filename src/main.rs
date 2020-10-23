@@ -1,7 +1,6 @@
 mod blockchain;
-use serde_json::{Result, Value, to_string};
+use serde_json::Value;
 use crate::blockchain::{Blockchain, Transaction};
-use serde::ser::{Serialize, SerializeStruct, Serializer};
 
 fn main() {
     // Create a new blockchain (we would ideally read from disk and update from P2P)
@@ -16,6 +15,10 @@ fn main() {
     // Make another transaction in the opposite direction
     blockchain.add_transaction(Transaction::new(bob, alice, 50)).unwrap();
     // Print out all blocks
+    let serial = serde_json::to_string(&blockchain).unwrap();
+    println!("Testing serialization: {}", serial);
+    let deserial: Value = serde_json::from_str(&serial).unwrap();
+    println!("Testing deserialization: {}", deserial);
     for block in blockchain.block_chain() {
         println!("Block {:?}", block);
     }
