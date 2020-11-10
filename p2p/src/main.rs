@@ -14,8 +14,6 @@ use std::env;
 use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::Read;
-use std::io::BufReader;
-use std::path::Path;
 use pnet::datalink;
 use ::std::*;
 
@@ -45,15 +43,6 @@ struct MyIdentity {
     ip: String,
 }
 
-fn read_user_from_file<P: AsRef<Path>>(path: P) -> Result<KeyPair, Box<Error>> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-
-    let u = serde_json::from_reader(reader)?;
-
-    Ok(u)
-}
-
 
 /*
 To-do list:
@@ -77,6 +66,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     
     // Checking for exisitng key pair
+    
 	let p = env::current_dir().unwrap();
     
     let temp = p.to_string_lossy();
@@ -92,7 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         file.read_to_string(&mut contents)?;
 
         let stuff: serde_json::Value = serde_json::from_str(&contents).expect("JSON incorrectly formatted");
-        println!{"My identity: {}", stuff["ip"][0]}
+        //println!{"My identity: {}", stuff["ip"][0]}
 	}	
 	else {
 
@@ -106,7 +96,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut local_ip: String = "Not detected".to_string();
 
         for iface in datalink::interfaces() {
-            let mut raw = iface.ips[0].to_string();
+            let raw = iface.ips[0].to_string();
             let split: Vec<&str> = raw.split("/").take(1).collect::<Vec<_>>();
             let s: String = split.into_iter().collect();
             if s != "127.0.0.1" {
@@ -132,7 +122,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         
         serde_json::to_writer(&File::create(&path)?, &serialized);
     }
-
+    
 
     
 
@@ -220,7 +210,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Tell the swarm to listen on all interfaces and a random, OS-assigned port
 
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/4000".parse()?)?;
+    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse()?)?;
 
 
 	let mut listening = false;
