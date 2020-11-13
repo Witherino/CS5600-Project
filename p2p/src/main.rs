@@ -7,7 +7,12 @@ use libp2p::{
     identity,
     floodsub::{self, Floodsub, FloodsubEvent},
     mdns::{Mdns, MdnsEvent},
-    swarm::NetworkBehaviourEventProcess
+    swarm::NetworkBehaviourEventProcess,
+    noise,
+    core::upgrade,
+    mplex,
+    tcp::TcpConfig,
+    Transport
 };
 use std::{error::Error, task::{Context, Poll}};
 use std::env;
@@ -145,7 +150,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     
 
-	let transport = libp2p::build_development_transport(local_key.clone())?;
+    let tcp = TcpConfig::new();
+    let noise_keys = noise::Keypair::<noise::X25519Spec>::new().into_authentic(&local_key).unwrap();
+    let noise = noise::NoiseConfig::xx(noise_keys).into_authenticated();
+    let mplex = mplex::MplexConfig::new();
+    let transport = tcp.upgrade(upgrade::Version::V1).authenticate(noise).multiplex(mplex);
 
     let floodsub_topic = floodsub::Topic::new("block_chain");
 
