@@ -1,214 +1,105 @@
+// Copyright 2018 Parity Technologies (UK) Ltd.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+//! A basic chat application with logs demonstrating libp2p and the gossipsub protocol.
+//!
+//! Using two terminal windows, start two instances. Type a message in either terminal and hit return: the
+//! message is sent and printed in the other terminal. Close with Ctrl-c.
+//!
+//! You can of course open more terminal windows and add more participants.
+//! Dialing any of the other peers will propagate the new participant to all
+//! chat members and everyone will receive all messages.
+//!
+//! In order to get the nodes to connect, take note of the listening address of the first
+//! instance and start the second with this address as the first argument. In the first terminal
+//! window, run:
+//!
+//! ```sh
+//! cargo run --example gossipsub-chat
+//! ```
+//!
+//! It will print the PeerId and the listening address, e.g. `Listening on
+//! "/ip4/0.0.0.0/tcp/24915"`
+//!
+//! In the second terminal window, start a new instance of the example with:
+//!
+//! ```sh
+//! cargo run --example gossipsub-chat -- /ip4/127.0.0.1/tcp/24915
+//! ```
+//!
+//! The two nodes should then connect.
+
 use async_std::{io, task};
+use env_logger::{Builder, Env};
 use futures::prelude::*;
 use libp2p::gossipsub::protocol::MessageId;
 use libp2p::gossipsub::{GossipsubEvent, GossipsubMessage, MessageAuthenticity, Topic};
 use libp2p::{gossipsub, identity, PeerId};
-use std::{error::Error, task::{Context, Poll}};
-use std::env;
-use serde::{Serialize, Deserialize};
-use std::fs::File;
-use std::io::Read;
-use pnet::datalink;
-use ::std::*;
-
-/*
-pub struct Blockchain {
-    block_chain: Vec<Block>,
-    difficulty: u8,
-}
-*/
-
-#[derive(Serialize, Deserialize, Debug)]
-struct BlockChainDummy {
-    block_chain: i32,
-    difficulty: i32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct KeyPair {
-    name: String,
-    id: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct MyIdentity {
-    name: String,
-    id: String,
-    ip: String,
-}
-
-
-/*
-To-do list:
-Finish seralize/deserialze methods for KeyPair json and BlockChain json
-Have loop poll the block chain json instead of stdin input
-Adjust behaviour implementations for the poll change
-Implement "Friends List" JSON so user doesnt have to type a specific IP every use
-Check other possible behaviours to add such as Identify and Request/Response
-*/
-
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::time::Duration;
+use std::{
+    error::Error,
+    task::{Context, Poll},
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    // Stuff to store on local host:
-	// Discovered peers, host's key pair, personal ledger
-    //let point = BlockChainDummy { block_chain: 10, difficulty: 2};
-
-    //let serialized = serde_json::to_string(&point).unwrap();
-
-    //fs::write("newfile.json", serialized).expect("Unable to write file");
-
-    
-    // Checking for exisitng key pair
-
-    /*
-    
-	let p = env::current_dir().unwrap();
-    
-    let temp = p.to_string_lossy();
-    let mut path = temp.to_string();
-    let bar = "/src/my_identity.json".to_string();
-    path.push_str(&bar);
-
-    let path_present = std::path::Path::new(&path).exists();
-
-    if path_present{
-        let mut file = File::open(path)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-
-        let stuff: serde_json::Value = serde_json::from_str(&contents).expect("JSON incorrectly formatted");
-        //println!{"My identity: {}", stuff["ip"][0]}
-	}	
-	else {
-
-        println!("Enter your name: ");
-
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
-        println!("Hello {}", input);
-
-
-        let mut local_ip: String = "Not detected".to_string();
-
-        for iface in datalink::interfaces() {
-            let raw = iface.ips[0].to_string();
-            let split: Vec<&str> = raw.split("/").take(1).collect::<Vec<_>>();
-            let s: String = split.into_iter().collect();
-            if s != "127.0.0.1" {
-                local_ip = s;
-                break;
-            }
-        }
-         
-        let local_key = identity::Keypair::generate_ed25519();
-        let local_peer_id = PeerId::from(local_key.public());
-
-        //let me = MyIdentity { name: input, ip: local_ip, id: local_peer_id.to_string()};
-
-        let me = MyIdentity {
-            name: input,
-            ip: local_ip,
-            id: local_peer_id.to_string()
-        };
-
-        let serialized = serde_json::to_string(&me).unwrap();
-
-        println!("{}", serialized);
-        
-        serde_json::to_writer(&File::create(&path)?, &serialized);
-    }
-    
-
-    */
-
-    //let u = read_user_from_file(path).unwrap();
-	// On first run, create a random identity keypair for the local node
-
-	//if !path_present{
+    // Create a random PeerId
     let local_key = identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
-        //let my_name = "MyName";
-        //let myPair = { name: my_name, id: local_peer_id};
-	//}	
-	//else {
-        //let temp = read_user_from_file(path).unwrap();
-        //println!()
-    //}
+    println!("Local peer id: {:?}", local_peer_id);
 
-    
-    //println!("Local peer id: {:?}", local_peer_id);
-
-
+    // Set up an encrypted TCP Transport over the Mplex and Yamux protocols
     let transport = libp2p::build_development_transport(local_key.clone())?;
-    
-    let gossipsub_topic = Topic::new("gossip-test".into())
 
+    // Create a Gossipsub topic
+    let topic = Topic::new("test-net".into());
+
+    // Create a Swarm to manage peers and events
     let mut swarm = {
-        let gossipsub_config = gossipsub:GossipsubConfig::default();
+        // to set default parameters for gossipsub use:
+        // let gossipsub_config = gossipsub::GossipsubConfig::default();
 
-        let mut gossipsub = gossipsub:Gossipsub::new(MessafeAuthenticity::Signed(local_key), gossipsub_config);
+        // To content-address message, we can take the hash of message and use it as an ID.
+        let message_id_fn = |message: &GossipsubMessage| {
+            let mut s = DefaultHasher::new();
+            message.data.hash(&mut s);
+            MessageId::from(s.finish().to_string())
+        };
 
-        gossipsub.subscribe(gossipsub_topic.clone())
-
+        // set custom gossipsub
+        let gossipsub_config = gossipsub::GossipsubConfigBuilder::new()
+            .heartbeat_interval(Duration::from_secs(10))
+            .message_id_fn(message_id_fn) // content-address messages. No two messages of the
+            //same content will be propagated.
+            .build();
+        // build a gossipsub network behaviour
+        let mut gossipsub =
+            gossipsub::Gossipsub::new(MessageAuthenticity::Signed(local_key), gossipsub_config);
+        gossipsub.subscribe(topic.clone());
         libp2p::Swarm::new(transport, gossipsub, local_peer_id)
     };
 
-
- /*
-    let floodsub_topic = floodsub::Topic::new("block_chain");
-
-    #[derive(NetworkBehaviour)]
-    struct BlockBehaviour {
-        floodsub: Floodsub,
-        mdns: Mdns,
-
-        #[behaviour(ignore)]
-        #[allow(dead_code)]
-        ignored_member: bool,
-    }
-
-    impl NetworkBehaviourEventProcess<FloodsubEvent> for BlockBehaviour {
-        // Called when `floodsub` produces an event.
-        fn inject_event(&mut self, message: FloodsubEvent) {
-            if let FloodsubEvent::Message(message) = message {
-                println!("Received: '{:?}' from {:?}", String::from_utf8_lossy(&message.data), message.source);
-            }
-        }
-    }
-
-    impl NetworkBehaviourEventProcess<MdnsEvent> for BlockBehaviour {
-        // Called when `mdns` produces an event.
-        fn inject_event(&mut self, event: MdnsEvent) {
-            match event {
-                MdnsEvent::Discovered(list) =>
-                    for (peer, _) in list {
-                        self.floodsub.add_node_to_partial_view(peer);
-                    }
-                MdnsEvent::Expired(list) =>
-                    for (peer, _) in list {
-                        if !self.mdns.has_node(&peer) {
-                            self.floodsub.remove_node_from_partial_view(&peer);
-                        }
-                    }
-            }
-        }
-    }
-
-    let mut swarm = {
-        let mdns = Mdns::new()?;
-        let mut behaviour = BlockBehaviour {
-            floodsub: Floodsub::new(local_peer_id.clone()),
-            mdns,
-            ignored_member: false,
-        };
-
-        behaviour.floodsub.subscribe(floodsub_topic.clone());
-        Swarm::new(transport, behaviour, local_peer_id)
-    };
-
-*/
-
+    // Listen on all interfaces and whatever port the OS assigns
     libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
 
     // Reach out to another node if specified
@@ -223,55 +114,44 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    // Read full lines from stdin
     let mut stdin = io::BufReader::new(io::stdin()).lines();
 
-
-/*
-	if let Some(addr) = std::env::args().nth(1) {
-        let remote = addr.parse()?;
-        Swarm::dial_addr(&mut swarm, remote)?;
-        println!("Dialed {}", addr)
-    }
-
-    // Tell the swarm to listen on all interfaces and a random, OS-assigned port
-
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse()?)?;
-
-*/
-let mut listening = false;
-task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
-    loop {
-        if let Err(e) = match stdin.try_poll_next_unpin(cx)? {
-            Poll::Ready(Some(line)) => swarm.publish(&topic, line.as_bytes()),
-            Poll::Ready(None) => panic!("Stdin closed"),
-            Poll::Pending => break,
-        } {
-            println!("Publish error: {:?}", e);
+    // Kick it off
+    let mut listening = false;
+    task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
+        loop {
+            if let Err(e) = match stdin.try_poll_next_unpin(cx)? {
+                Poll::Ready(Some(line)) => swarm.publish(&topic, line.as_bytes()),
+                Poll::Ready(None) => panic!("Stdin closed"),
+                Poll::Pending => break,
+            } {
+                println!("Publish error: {:?}", e);
+            }
         }
-    }
 
-    loop {
-        match swarm.poll_next_unpin(cx) {
-            Poll::Ready(Some(gossip_event)) => match gossip_event {
-                GossipsubEvent::Message(peer_id, id, message) => println!(
-                    "Got message: {} with id: {} from peer: {:?}",
-                    String::from_utf8_lossy(&message.data),
-                    id,
-                    peer_id
-                ),
-                _ => {}
-            },
-            Poll::Ready(None) | Poll::Pending => break,
+        loop {
+            match swarm.poll_next_unpin(cx) {
+                Poll::Ready(Some(gossip_event)) => match gossip_event {
+                    GossipsubEvent::Message(peer_id, id, message) => println!(
+                        "Got message: {} with id: {} from peer: {:?}",
+                        String::from_utf8_lossy(&message.data),
+                        id,
+                        peer_id
+                    ),
+                    _ => {}
+                },
+                Poll::Ready(None) | Poll::Pending => break,
+            }
         }
-    }
 
-    if !listening {
-        for addr in libp2p::Swarm::listeners(&swarm) {
-            println!("Listening on {:?}", addr);
-            listening = true;
+        if !listening {
+            for addr in libp2p::Swarm::listeners(&swarm) {
+                println!("Listening on {:?}", addr);
+                listening = true;
+            }
         }
-    }
 
-    Poll::Pending
-}))
+        Poll::Pending
+    }))
 }
