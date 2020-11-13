@@ -1,14 +1,8 @@
 use async_std::{io, task};
-use futures::{future, prelude::*};
-use libp2p::{
-    PeerId,
-    Swarm,
-    NetworkBehaviour,
-    identity,
-    floodsub::{self, Floodsub, FloodsubEvent},
-    mdns::{Mdns, MdnsEvent},
-    swarm::NetworkBehaviourEventProcess
-};
+use futures::prelude::*;
+use libp2p::gossipsub::protocol::MessageId;
+use libp2p::gossipsub::{GossipsubEvent, GossipsubMessage, MessageAuthenticity, Topic};
+use libp2p::{gossipsub, identity, PeerId};
 use std::{error::Error, task::{Context, Poll}};
 use std::env;
 use serde::{Serialize, Deserialize};
@@ -66,6 +60,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     
     // Checking for exisitng key pair
+
+    /*
     
 	let p = env::current_dir().unwrap();
     
@@ -124,14 +120,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     
 
-    
+    */
 
     //let u = read_user_from_file(path).unwrap();
 	// On first run, create a random identity keypair for the local node
 
 	//if !path_present{
-        let local_key = identity::Keypair::generate_ed25519();
-        let local_peer_id = PeerId::from(local_key.public());
+    let local_key = identity::Keypair::generate_ed25519();
+    let local_peer_id = PeerId::from(local_key.public());
         //let my_name = "MyName";
         //let myPair = { name: my_name, id: local_peer_id};
 	//}	
@@ -141,12 +137,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     //}
 
     
-    println!("Local peer id: {:?}", local_peer_id);
+    //println!("Local peer id: {:?}", local_peer_id);
 
+
+    let transport = libp2p::build_development_transport(local_key.clone())?;
     
+    let gossipsub_topic = Topic::new("gossip-test".into())
 
-	let transport = libp2p::build_development_transport(local_key.clone())?;
+    let mut swarm = {
+        let gossipsub_config = gossipsub:GossipsubConfig::default();
 
+        let mut gossipsub = gossipsub:Gossipsub::new(MessafeAuthenticity::Signed(local_key), gossipsub_config);
+
+        gossipsub.subscribe(gossipsub_topic.clone())
+
+        libp2p::Swarm::new(transport, gossipsub, local_peer_id)
+    };
+
+
+ /*
     let floodsub_topic = floodsub::Topic::new("block_chain");
 
     #[derive(NetworkBehaviour)]
@@ -198,10 +207,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         Swarm::new(transport, behaviour, local_peer_id)
     };
 
+*/
+
+    libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+
+    // Reach out to another node if specified
+    if let Some(to_dial) = std::env::args().nth(1) {
+        let dialing = to_dial.clone();
+        match to_dial.parse() {
+            Ok(to_dial) => match libp2p::Swarm::dial_addr(&mut swarm, to_dial) {
+                Ok(_) => println!("Dialed {:?}", dialing),
+                Err(e) => println!("Dial {:?} failed: {:?}", dialing, e),
+            },
+            Err(err) => println!("Failed to parse address to dial: {:?}", err),
+        }
+    }
+
     let mut stdin = io::BufReader::new(io::stdin()).lines();
 
 
-
+/*
 	if let Some(addr) = std::env::args().nth(1) {
         let remote = addr.parse()?;
         Swarm::dial_addr(&mut swarm, remote)?;
@@ -212,31 +237,41 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse()?)?;
 
+*/
+let mut listening = false;
+task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
+    loop {
+        if let Err(e) = match stdin.try_poll_next_unpin(cx)? {
+            Poll::Ready(Some(line)) => swarm.publish(&topic, line.as_bytes()),
+            Poll::Ready(None) => panic!("Stdin closed"),
+            Poll::Pending => break,
+        } {
+            println!("Publish error: {:?}", e);
+        }
+    }
 
-	let mut listening = false;
-    task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
-        loop {
-            match stdin.try_poll_next_unpin(cx)? {
-                Poll::Ready(Some(line)) => swarm.floodsub.publish(floodsub_topic.clone(), line.as_bytes()),
-                Poll::Ready(None) => panic!("Stdin closed"),
-                Poll::Pending => break
-            }
+    loop {
+        match swarm.poll_next_unpin(cx) {
+            Poll::Ready(Some(gossip_event)) => match gossip_event {
+                GossipsubEvent::Message(peer_id, id, message) => println!(
+                    "Got message: {} with id: {} from peer: {:?}",
+                    String::from_utf8_lossy(&message.data),
+                    id,
+                    peer_id
+                ),
+                _ => {}
+            },
+            Poll::Ready(None) | Poll::Pending => break,
         }
-        loop {
-            match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(event)) => println!("{:?}", event),
-                Poll::Ready(None) => return Poll::Ready(Ok(())),
-                Poll::Pending => {
-                    if !listening {
-                        for addr in Swarm::listeners(&swarm) {
-                            println!("Listening on {:?}", addr);
-                            listening = true;
-                        }
-                    }
-                    break
-                }
-            }
+    }
+
+    if !listening {
+        for addr in libp2p::Swarm::listeners(&swarm) {
+            println!("Listening on {:?}", addr);
+            listening = true;
         }
-        Poll::Pending
-    }))
+    }
+
+    Poll::Pending
+}))
 }
