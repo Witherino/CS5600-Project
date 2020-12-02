@@ -9,11 +9,14 @@ use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use serde::{Serialize, Deserialize};
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::Read;
+use std::io::Write;
 use std::fs;
 use std::env;
 use std::str;
-use pnet::datalink;
+//use pnet::datalink;
+use isahc::prelude::*;
 use std::{
     error::Error,
     task::{Context, Poll},
@@ -38,16 +41,16 @@ fn process_data_stream(msg: &str, _id: String, _peer_id: String) {
     let p = env::current_dir().unwrap();    
     let temp = p.to_string_lossy();
     let mut path = temp.to_string();
-    let bar = "/src/new.json".to_string();
+    let bar = "/src/peer_ids.json".to_string();
     path.push_str(&bar);
 
-    fs::write(path, msg).expect("Unable to write file");
-
+    //fs::write(path, msg).expect("Unable to write file");
+    let mut file = OpenOptions::new().append(true).open(path).expect("file open failed");
+    file.write_all(msg.as_bytes()).expect("write failed");
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     Builder::from_env(Env::default().default_filter_or("info")).init();
-
 
     let p = env::current_dir().unwrap();
     
@@ -77,11 +80,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     else
     {
         let mut input = String::new();
+        println!("No identity saved. Enter your name please:");
         std::io::stdin().read_line(&mut input).unwrap();
+        input.pop();
         println!("Hello {}", input);
 
-        let mut local_ip: String = "Not detected".to_string();
+        //let mut local_ip: String = "Not detected".to_string();
 
+        let mut response = isahc::get("https://icanhazip.com/")?;
+        let mut local_ip = response.text()?;
+        local_ip.pop();
+
+        //throws an error if theres a link established on the device 
+        //that is not currently connected 
+        /*
         for iface in datalink::interfaces() {
             let mut raw = iface.ips[0].to_string();
             let split: Vec<&str> = raw.split("/").take(1).collect::<Vec<_>>();
@@ -91,6 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 break;
             }
         }
+        */
 
         let me = MyIdentity {
             name: input,
@@ -109,7 +122,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let transport = libp2p::build_development_transport(local_key.clone())?;
 
     // Create a Gossipsub topic
-    let topic = Topic::new("test-net".into());
+    let topic = Topic::new("Blockchain-P2P".into());
 
     // Create a Swarm to manage peers and events
     let mut swarm = {
