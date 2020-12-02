@@ -57,6 +57,14 @@ fn process_data_stream(msg: &str, _id: String, _peer_id: String) {
     }
 }
 
+/*
+fn assure_JSON_compatibility(filepath: String){
+    let mut file = File::open(filepath);
+    let mut contents = String::new();
+    file.read_to_string(&mut contents);
+}
+*/
+
 fn main() -> Result<(), Box<dyn Error>> {
     
     let jtemp = MyIdentity {
@@ -166,22 +174,31 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Listen on all interfaces and whatever port the OS assigns
     libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/4000".parse().unwrap()).unwrap();
 
-    if peer_path_present{
-        println!("Path present");
-    }
-    else{
-        // Reach out to another node if specified
-        if let Some(to_dial) = std::env::args().nth(1) {
-            let dialing = to_dial.clone();
-            match to_dial.parse() {
-                Ok(to_dial) => match libp2p::Swarm::dial_addr(&mut swarm, to_dial) {
-                    Ok(_) => println!("Dialed {:?}", dialing),
-                    Err(e) => println!("Dial {:?} failed: {:?}", dialing, e),
-                },
-                Err(err) => println!("Failed to parse address to dial: {:?}", err),
-            }
+
+    // Reach out to another node if specified
+    if let Some(to_dial) = std::env::args().nth(1) {
+        let dialing = to_dial.clone();
+        match to_dial.parse() {
+            Ok(to_dial) => match libp2p::Swarm::dial_addr(&mut swarm, to_dial) {
+                Ok(_) => println!("Dialed {:?}", dialing),
+                Err(e) => println!("Dial {:?} failed: {:?}", dialing, e),
+            },
+            Err(err) => println!("Failed to parse address to dial: {:?}", err),
         }
     }
+
+    /*
+    if peer_path_present{
+        let x: Vec<MyIdentity> = ::serde_json::from_reader(File::open(peer_path)?)?;
+        for i in x {
+            println!("{}", i.name);
+        }
+        //println!("{}", );
+    }
+    */
+
+
+
 
     // Read full lines from stdin
     let mut stdin = io::BufReader::new(io::stdin()).lines();
