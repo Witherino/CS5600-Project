@@ -44,32 +44,46 @@ fn process_data_stream(msg: &str, _id: String, _peer_id: String) {
     let bar = "/src/peer_ids.json".to_string();
     path.push_str(&bar);
 
+    let path_present = std::path::Path::new(&path).exists();
+
     //fs::write(path, msg).expect("Unable to write file");
-    let mut file = OpenOptions::new().append(true).open(path).expect("file open failed");
-    file.write_all(msg.as_bytes()).expect("write failed");
+    if path_present{
+        let mut file = OpenOptions::new().append(true).open(path).expect("File open failed");
+        file.write_all(msg.as_bytes()).expect("write failed");
+    }
+    else{
+        let mut f = File::create(path).expect("Unable to create file");
+        f.write_all(msg.as_bytes()).expect("Unable to write data");
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    Builder::from_env(Env::default().default_filter_or("info")).init();
-
-    let p = env::current_dir().unwrap();
     
-    let temp = p.to_string_lossy();
-    let mut path = temp.to_string();
-    let bar = "/src/my_identity.json".to_string();
-    path.push_str(&bar);
-
-    let path_present = std::path::Path::new(&path).exists();
-
-    let jtemp = BlockChainDummy {
-        block_chain: 1,
-        difficulty: 2,
+    let jtemp = MyIdentity {
+        name: "Mitchell".to_string(),
+        ip: "192.168.87.50".to_string(),
     };
 
     let j = serde_json::to_string(&jtemp).unwrap();
 
-    if path_present{
-        let mut file = File::open(path)?;
+
+    Builder::from_env(Env::default().default_filter_or("info")).init();
+
+    let p = env::current_dir().unwrap();
+   
+    let temp = p.to_string_lossy();
+    let mut my_path = temp.to_string();
+    let mut peer_path = temp.to_string();
+    let my_bar = "/src/my_identity.json".to_string();
+    let peer_bar = "/src/peer_ids.json".to_string();
+    my_path.push_str(&my_bar);
+    peer_path.push_str(&peer_bar);
+
+    let my_path_present = std::path::Path::new(&my_path).exists();
+    let peer_path_present = std::path::Path::new(&peer_path).exists();
+
+    if my_path_present{
+        let mut file = File::open(my_path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
 
@@ -111,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
 
         let serialized = serde_json::to_string(&me).unwrap();
-        fs::write(path, serialized).expect("Unable to write file");
+        fs::write(my_path, serialized).expect("Unable to write file");
     }
 
     let local_key = identity::Keypair::generate_ed25519();
@@ -152,15 +166,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Listen on all interfaces and whatever port the OS assigns
     libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/4000".parse().unwrap()).unwrap();
 
-    // Reach out to another node if specified
-    if let Some(to_dial) = std::env::args().nth(1) {
-        let dialing = to_dial.clone();
-        match to_dial.parse() {
-            Ok(to_dial) => match libp2p::Swarm::dial_addr(&mut swarm, to_dial) {
-                Ok(_) => println!("Dialed {:?}", dialing),
-                Err(e) => println!("Dial {:?} failed: {:?}", dialing, e),
-            },
-            Err(err) => println!("Failed to parse address to dial: {:?}", err),
+    if peer_path_present{
+        println!("Path present");
+    }
+    else{
+        // Reach out to another node if specified
+        if let Some(to_dial) = std::env::args().nth(1) {
+            let dialing = to_dial.clone();
+            match to_dial.parse() {
+                Ok(to_dial) => match libp2p::Swarm::dial_addr(&mut swarm, to_dial) {
+                    Ok(_) => println!("Dialed {:?}", dialing),
+                    Err(e) => println!("Dial {:?} failed: {:?}", dialing, e),
+                },
+                Err(err) => println!("Failed to parse address to dial: {:?}", err),
+            }
         }
     }
 
