@@ -15,7 +15,6 @@ use std::io::Write;
 use std::fs;
 use std::env;
 use std::str;
-//use pnet::datalink;
 use isahc::prelude::*;
 use std::{
     error::Error,
@@ -24,32 +23,30 @@ use std::{
 
 
 #[derive(Serialize, Deserialize, Debug)]
-struct MyIdentity {
+struct Identity {
     name: String,
     ip: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct BlockChainDummy {
-    block_chain: i32,
-    difficulty: i32,
-}
-
 fn process_data_stream(msg: &str, _id: String, _peer_id: String) {
-    println!("This is the message: {}", msg);
 
+    //finding the path of the peers json
     let p = env::current_dir().unwrap();    
     let temp = p.to_string_lossy();
     let mut path = temp.to_string();
-    let bar = "/src/peer_ids.json".to_string();
+    let bar = "/peer_ids.json".to_string();
     path.push_str(&bar);
 
     let path_present = std::path::Path::new(&path).exists();
 
-    //fs::write(path, msg).expect("Unable to write file");
+    //importing new peer information
     if path_present{
-        let mut file = OpenOptions::new().append(true).open(path).expect("File open failed");
-        file.write_all(msg.as_bytes()).expect("write failed");
+        let mut contents = String::new();
+        let mut file = OpenOptions::new().append(true).read(true).open(path).expect("File open failed");
+        file.read_to_string(&mut contents).expect("File could not be read");
+        if !(contents.contains(msg)){
+            file.write_all(msg.as_bytes()).expect("write failed");
+        }
     }
     else{
         let mut f = File::create(path).expect("Unable to create file");
@@ -57,47 +54,73 @@ fn process_data_stream(msg: &str, _id: String, _peer_id: String) {
     }
 }
 
-/*
-fn assure_JSON_compatibility(filepath: String){
-    let mut file = File::open(filepath);
+//Makes sure files containing more than one JSON object are formatted correctly
+fn assure_json_compatibility(filepath: String) -> String{
+
+
+    let mut file = File::open(filepath).expect("File could not be opened");
     let mut contents = String::new();
-    file.read_to_string(&mut contents);
+    file.read_to_string(&mut contents).expect("File could not be read");
+
+    let mut clean_json = String::from("[");
+
+    //adding beggining/end brackets, removing unneccesary commas
+
+    for i in 0..contents.len(){
+        if i == contents.len()-1{
+            if contents.chars().nth(i).unwrap() == '}'{
+                clean_json.push('}')
+            }
+            clean_json.push(']');
+        }
+        else{
+            clean_json.push(contents.chars().nth(i).unwrap())
+        }     
+    }
+    return clean_json;
 }
-*/
+
+//Format an IP with the correct port and protocol information
+fn format_ip(ip: String) -> String{
+    let mut formatted = String::from("/ip4/");
+    formatted.push_str(&ip);
+    formatted.push_str("/tcp/4000");
+    return formatted;
+}
+
 
 fn main() -> Result<(), Box<dyn Error>> {
     
-    let jtemp = MyIdentity {
-        name: "Mitchell".to_string(),
-        ip: "192.168.87.50".to_string(),
-    };
-
-    let j = serde_json::to_string(&jtemp).unwrap();
-
-
     Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let p = env::current_dir().unwrap();
    
+    //Checking for json files
     let temp = p.to_string_lossy();
     let mut my_path = temp.to_string();
     let mut peer_path = temp.to_string();
-    let my_bar = "/src/my_identity.json".to_string();
-    let peer_bar = "/src/peer_ids.json".to_string();
+    let my_bar = "/my_identity.json".to_string();
+    let peer_bar = "/peer_ids.json".to_string();
     my_path.push_str(&my_bar);
     peer_path.push_str(&peer_bar);
 
     let my_path_present = std::path::Path::new(&my_path).exists();
     let peer_path_present = std::path::Path::new(&peer_path).exists();
 
+    //My Identity information
+    let mut me = Identity {
+        name: "N/A".to_string(),
+        ip: "N/A".to_string(),
+    };
+
+    //Create a my_identity json file if needed, else read from current
     if my_path_present{
         let mut file = File::open(my_path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
 
-        let stuff: MyIdentity = serde_json::from_str(&contents).expect("JSON incorrectly formatted");
-        println!{"Local peer ip: {:?}", stuff.ip}
-        //j = serde_json::to_string(&stuff)?;
+        me = serde_json::from_str(&contents).expect("JSON incorrectly formatted");
+        println!{"Local peer ip: {:?}", me.ip}
     }
     else
     {
@@ -107,27 +130,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         input.pop();
         println!("Hello {}", input);
 
-        //let mut local_ip: String = "Not detected".to_string();
-
         let mut response = isahc::get("https://icanhazip.com/")?;
         let mut local_ip = response.text()?;
         local_ip.pop();
 
-        //throws an error if theres a link established on the device 
-        //that is not currently connected 
-        /*
-        for iface in datalink::interfaces() {
-            let mut raw = iface.ips[0].to_string();
-            let split: Vec<&str> = raw.split("/").take(1).collect::<Vec<_>>();
-            let s: String = split.into_iter().collect();
-            if s != "127.0.0.1" {
-                local_ip = s;
-                break;
-            }
-        }
-        */
-
-        let me = MyIdentity {
+        me = Identity {
             name: input,
             ip: local_ip,
         };
@@ -136,6 +143,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         fs::write(my_path, serialized).expect("Unable to write file");
     }
 
+    //Encapsulate identity info being sent to the peer
+    let mut me_encoded = serde_json::to_string(&me).unwrap();
+    me_encoded.push(',');
+
+    //Generating Key pair
     let local_key = identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
     println!("Local peer id: {:?}", local_peer_id);
@@ -177,9 +189,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Reach out to another node if specified
     if let Some(to_dial) = std::env::args().nth(1) {
-        let dialing = to_dial.clone();
-        match to_dial.parse() {
-            Ok(to_dial) => match libp2p::Swarm::dial_addr(&mut swarm, to_dial) {
+        let formatted = format_ip(to_dial);
+        let dialing = formatted.clone();
+        match formatted.parse() {
+            Ok(formatted) => match libp2p::Swarm::dial_addr(&mut swarm, formatted) {
                 Ok(_) => println!("Dialed {:?}", dialing),
                 Err(e) => println!("Dial {:?} failed: {:?}", dialing, e),
             },
@@ -187,18 +200,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    /*
+    //Loop through established peers to connect too
     if peer_path_present{
-        let x: Vec<MyIdentity> = ::serde_json::from_reader(File::open(peer_path)?)?;
+        let raw = assure_json_compatibility(peer_path);
+        let x: Vec<Identity> = ::serde_json::from_str(&raw)?;
         for i in x {
-            println!("{}", i.name);
+            let formatted = format_ip(i.ip);
+            let dialing = formatted.clone();
+            match formatted.parse() {
+                Ok(formatted) => match libp2p::Swarm::dial_addr(&mut swarm, formatted) {
+                    Ok(_) => println!("Dialed {} at {:?}", i.name, dialing),
+                    Err(e) => println!("Dial {:?} failed: {:?}", dialing, e),
+                },
+                Err(err) => println!("Failed to parse address to dial: {:?}", err),
+            }
         }
-        //println!("{}", );
     }
-    */
-
-
-
+    
 
     // Read full lines from stdin
     let mut stdin = io::BufReader::new(io::stdin()).lines();
@@ -209,7 +227,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
         loop {
             if let Err(e) = match stdin.try_poll_next_unpin(cx)? {
-                Poll::Ready(Some(line)) => swarm.publish(&topic, j.as_bytes()),
+                Poll::Ready(Some(line)) => swarm.publish(&topic, me_encoded.as_bytes()),
                 Poll::Ready(None) => panic!("Stdin closed"),
                 Poll::Pending => break,
             } {
@@ -220,13 +238,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         loop {
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(gossip_event)) => match gossip_event {
-                    GossipsubEvent::Message(peer_id, id, message) => process_data_stream(str::from_utf8(&message.data).unwrap(), id.to_string(), peer_id.to_string()),
-                    /*println!(
-                        "Got message: {} with id: {} from peer: {:?}",
-                        String::from_utf8_lossy(&message.data),
-                        id,
-                        peer_id
-                    )*/
+                    GossipsubEvent::Message(peer_id, id, message) => process_data_stream(str::from_utf8(&message.data).unwrap(), 
+                    id.to_string(), peer_id.to_string()),
                     _ => {}
                 },
                 Poll::Ready(None) | Poll::Pending => break,
