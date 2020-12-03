@@ -1,1 +1,13 @@
+# build files
 /target
+# ide files
+.idea
+# log files
+*.log
+# key files
+id_rsa
+id_rsa.pub
+# peer files
+peer_ids.json
+# blockchain files
+blockchain.json
