@@ -1,4 +1,3 @@
-
 // Modules
 mod swarm;
 mod peer_data;
@@ -56,6 +55,9 @@ fn process_data_stream(msg: &str, _id: String, _peer_id: String) {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+
+
+
     println!("Blockchain CS5600");
     // Get our peer data to start swarm
     let my_keypair = get_keypair();
@@ -69,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Spawned Swarm");
 
     // Listen on all interfaces and whatever port the OS assigns
-    libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().expect("Invalid swarm ip")).expect("Failed to start swarm listen");
+    libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/4000".parse().expect("Invalid swarm ip")).expect("Failed to start swarm listen");
 
     println!("Swarm Listening");
 
@@ -100,8 +102,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
         swarm.publish(&Topic::new(BLOCKCHAIN_TOPIC.into()), "HELLO BLOCKCHAIN".as_bytes());
         swarm.publish(&Topic::new(IDENTIFY_TOPIC.into()), "HELLO IDENTIFY".as_bytes());
+
         loop {
-            println!("swarm has {} peers", swarm.all_peers().count());
+            //println!("swarm has {} peers", swarm.all_peers().count());
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(gossip_event)) => match gossip_event {
                     GossipsubEvent::Message(peer_id, id, message) => {
