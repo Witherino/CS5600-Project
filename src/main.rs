@@ -55,9 +55,6 @@ fn process_data_stream(msg: &str, _id: String, _peer_id: String) {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-
-
-
     println!("Blockchain CS5600");
     // Get our peer data to start swarm
     let my_keypair = get_keypair();
@@ -104,7 +101,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         swarm.publish(&Topic::new(IDENTIFY_TOPIC.into()), "HELLO IDENTIFY".as_bytes());
 
         loop {
-            //println!("swarm has {} peers", swarm.all_peers().count());
+            println!("swarm has {} peers", swarm.all_peers().count());
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(gossip_event)) => match gossip_event {
                     GossipsubEvent::Message(peer_id, id, message) => {

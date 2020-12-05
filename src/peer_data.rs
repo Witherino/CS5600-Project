@@ -6,13 +6,16 @@ use std::io::{Read, Write, Result as IOResult};
 use std::str::FromStr;
 // External imports
 use libp2p::{PeerId, Swarm};
-use libp2p::identity::{Keypair, PublicKey};
+use libp2p::identity::{Keypair};
 use libp2p::websocket::tls::PrivateKey;
-use libp2p::identity::ed25519::SecretKey;
+use libp2p::identity::secp256k1::SecretKey;
+use libp2p::identity::secp256k1::PublicKey;
 use libp2p::gossipsub::Gossipsub;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::core::Multiaddr;
 use serde::{Serialize, Deserialize};
+use std::io::Cursor;
+
 
 // Private key file path
 const KEY_FILE: &'static str = "./id_dsa";
@@ -20,7 +23,7 @@ const KEY_FILE: &'static str = "./id_dsa";
 const PUB_KEY_FILE: &'static str = "./id_dsa.pub";
 
 // Buffer size for reading DER for signing
-const MAX_DER_SIZE: usize = 2048;
+const MAX_DER_SIZE: usize = 32;
 
 // File for storing known peers
 const KNOWN_PEERS_PATH: &'static str = "./peer_ids.json";
@@ -61,18 +64,23 @@ impl PeerData {
 //     }
 // }
 
+
+
+
 pub fn get_keypair() -> Keypair {
     if let Ok(mut private_key_file) = File::open(Path::new(KEY_FILE)) {
         if let Ok(public_key_file) = File::open(Path::new(PUB_KEY_FILE)) {
             let mut der_buffer = [0u8; MAX_DER_SIZE];
             private_key_file.read(&mut der_buffer);
-            return Keypair::secp256k1_from_der(&mut der_buffer).expect("Failed to parse private key file")
+            let secret = libp2p::identity::secp256k1::SecretKey::from_bytes(&mut der_buffer).expect("Unable to parse secret key");
+            let mut kp = libp2p::identity::secp256k1::Keypair::from(secret);
+            return libp2p::identity::Keypair::Secp256k1(kp);
+            
         }
     }
-
     let keypair = Keypair::generate_secp256k1();
     // TODO: Save the new keys to a file for later use
-    // save_keys(keypair.clone());
+    save_keys(keypair.clone());
 
     keypair
 }
@@ -86,10 +94,10 @@ fn save_keys(keypair: Keypair) -> IOResult<()> {
 
             // Write private key to file
             let mut private_key_file = File::create(Path::new(KEY_FILE))?;
-            private_key_file.write(&private_key);
+            private_key_file.write(&private_key)?;
             // Write public key to file
             let mut public_key_file = File::create(Path::new(PUB_KEY_FILE))?;
-            public_key_file.write(&public_key);
+            public_key_file.write(&public_key)?;
         },
         _ => panic!("unsupported signing algorithm"),
     };
