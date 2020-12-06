@@ -169,4 +169,6 @@ fn main() {
     let _ui = MessageBank::build_ui(Default::default()).expect("Failed to build UI");
     
     nwg::dispatch_thread_events();
+
 }
+
