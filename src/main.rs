@@ -120,20 +120,26 @@ impl MessageBank {
         }
         else
         {
+            let mut positive: bool = true;
             for n in 0..checks.len()
             {
                 //convert balance to int
                 let curr_bal = self.curr_balance.text();
-                let i: i32 = curr_bal.parse().unwrap_or(0);
+                let curr_bal_int: i32 = curr_bal.parse().unwrap_or(0);
 
                 //convert sent $ to int
                 let sent_amount = self.sent_amount.text();
-                let j: i32 = sent_amount.parse().unwrap_or(0);
-
-                total_amount += j;
+                let sent_amount_int: i32 = sent_amount.parse().unwrap_or(0);
 
                 //update balance
-                let result = i - j;
+                let result = curr_bal_int - sent_amount_int;
+                if result < 0
+                {
+                    nwg::simple_message("Error", "Could not complete transaction. Insufficient funds");
+                    positive = false;
+                    break;
+                }
+                total_amount += sent_amount_int;
                 self.curr_balance.set_text(&(result.to_string()));
 
                 if checks.len() == 1
@@ -151,13 +157,15 @@ impl MessageBank {
                     all_peers.push_str(&checks[n]);
                 }
             }
+            if positive
+            {
+                let mut test_s: String = "Sent total of $".to_owned();
+                test_s.push_str(&total_amount.to_string());
+                test_s.push_str(" to ");
+                test_s.push_str(&all_peers);
 
-            let mut test_s: String = "Sent total of $".to_owned();
-            test_s.push_str(&total_amount.to_string());
-            test_s.push_str(" to ");
-            test_s.push_str(&all_peers);
-
-            nwg::simple_message("Transaction Successful", &test_s);
+                nwg::simple_message("Transaction Successful", &test_s);
+            }
         }
         self.peer_id.set_text("");
         self.sent_amount.set_text("");
