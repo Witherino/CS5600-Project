@@ -21,7 +21,7 @@ pub struct MessageBank {
     #[nwg_control(text: "Add Peer ID", focus: true)]
     #[nwg_layout_item(layout: layout, col: 0, row: 0, col_span: 1)]
     #[nwg_events( OnButtonClick: [MessageBank::add_peer])]
-    add_message_btn: nwg::Button,
+    add_peer_btn: nwg::Button,
 
     #[nwg_control(text: "Specify $ Amount:")]
     #[nwg_layout_item(layout: layout, col: 0, row: 1, col_span: 1)]
@@ -30,12 +30,12 @@ pub struct MessageBank {
     //Box to add peer ID
     #[nwg_control]
     #[nwg_layout_item(layout: layout, col: 1, row: 0, col_span: 1)]
-    message_title: nwg::TextInput,
+    peer_id: nwg::TextInput,
     
     //Box to specify $ amount
     #[nwg_control]
     #[nwg_layout_item(layout: layout, col: 1, row: 1, col_span: 1)]
-    message_content: nwg::TextInput,
+    sent_amount: nwg::TextInput,
 
     #[nwg_control(text:"Peer History:")]
     #[nwg_layout_item(layout: layout, col: 0, row: 3, col_span: 1)]
@@ -61,9 +61,9 @@ pub struct MessageBank {
 impl MessageBank {
 
     fn add_peer(&self) {
-        let title = self.message_title.text();
+        let title = self.peer_id.text();
 
-        self.message_title.set_text("");
+        self.peer_id.set_text("");
 
         let mut new_check = Default::default();
         nwg::CheckBox::builder()
@@ -106,21 +106,17 @@ impl MessageBank {
             }
         }
 
-        if !self.message_content.text().chars().all(char::is_numeric)
-        {
-            nwg::simple_message("Error", "Sent amount must be a number");
-        }
-        else if self.message_content.text().chars().nth(0).unwrap().eq(&'-')
-        {
-            nwg::simple_message("Error", "Sent amount cannot be negative");
-        }
-        else if checks.len() == 0
+        if checks.len() == 0
         {
             nwg::simple_message("Error", "Please select at least 1 peer");
         }
-        else if self.message_content.text().eq("0") || self.message_content.text().eq("")// || (self.message_content.text().find("-") !=)
+        else if self.sent_amount.text().eq("0") || self.sent_amount.text().eq("")
         {
             nwg::simple_message("Error", "Please add an amount to send");
+        }
+        else if !self.sent_amount.text().chars().all(char::is_numeric)
+        {
+            nwg::simple_message("Error", "Sent amount must be a postive number");
         }
         else
         {
@@ -131,7 +127,7 @@ impl MessageBank {
                 let i: i32 = curr_bal.parse().unwrap_or(0);
 
                 //convert sent $ to int
-                let sent_amount = self.message_content.text();
+                let sent_amount = self.sent_amount.text();
                 let j: i32 = sent_amount.parse().unwrap_or(0);
 
                 total_amount += j;
@@ -154,8 +150,6 @@ impl MessageBank {
                     all_peers.push_str("and ");
                     all_peers.push_str(&checks[n]);
                 }
-
-                println!("This is the ID: {}, and this is the amount: {}", boxes[n].text(), sent_amount);
             }
 
             let mut test_s: String = "Sent total of $".to_owned();
@@ -165,8 +159,8 @@ impl MessageBank {
 
             nwg::simple_message("Transaction Successful", &test_s);
         }
-        self.message_title.set_text("");
-        self.message_content.set_text("");
+        self.peer_id.set_text("");
+        self.sent_amount.set_text("");
     }
 
     fn exit(&self) {
