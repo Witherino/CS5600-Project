@@ -11,7 +11,7 @@ use std::cell::RefCell;
 #[derive(Default, NwgUi)]
 pub struct MessageBank {
     
-    #[nwg_control(size:(600, 600), position:(800, 300), title: "P2P Money Sender")]
+    #[nwg_control(size:(650, 600), position:(800, 300), title: "P2P Money Sender")]
     #[nwg_events( OnWindowClose: [MessageBank::exit] )]
     window: nwg::Window,
 
@@ -23,16 +23,16 @@ pub struct MessageBank {
     #[nwg_events( OnButtonClick: [MessageBank::add_peer])]
     add_message_btn: nwg::Button,
 
-    #[nwg_control(text: "Specify $ Amount", focus: true)]
+    #[nwg_control(text: "Specify $ Amount:")]
     #[nwg_layout_item(layout: layout, col: 0, row: 1, col_span: 1)]
-    add_money_btn: nwg::Button,
+    add_money_btn: nwg::Label,
 
-    //Add peer ID input
+    //Box to add peer ID
     #[nwg_control]
     #[nwg_layout_item(layout: layout, col: 1, row: 0, col_span: 1)]
     message_title: nwg::TextInput,
     
-    //Specify $ amount input
+    //Box to specify $ amount
     #[nwg_control]
     #[nwg_layout_item(layout: layout, col: 1, row: 1, col_span: 1)]
     message_content: nwg::TextInput,
@@ -50,11 +50,11 @@ pub struct MessageBank {
     #[nwg_layout_item(layout: layout, col: 2, row: 1, col_span: 1)]
     balance: nwg::Label,
 
-    #[nwg_control(text:"5000")]
+    #[nwg_control(text:"10000")]
     #[nwg_layout_item(layout: layout, col: 3, row: 1, col_span: 1)]
     curr_balance: nwg::Label,
 
-    buttons: RefCell<Vec<nwg::Label>>,
+    boxes: RefCell<Vec<nwg::CheckBox>>,
     handlers: RefCell<Vec<nwg::EventHandler>>,
 }
 
@@ -63,39 +63,92 @@ impl MessageBank {
     fn add_peer(&self) {
         let title = self.message_title.text();
 
-        let mut new_label = Default::default();
-        nwg::Label::builder()
+        self.message_title.set_text("");
+
+        let mut new_check = Default::default();
+        nwg::CheckBox::builder()
             .text(&title)
             .parent(&self.window)
-            .build(&mut new_label)
+            .build(&mut new_check)
             .expect("Failed to build button");
+   
+        let mut boxes = self.boxes.borrow_mut();
 
-        let mut buttons = self.buttons.borrow_mut();
+        // new peer box positions are weird
+        let blen = boxes.len() as u32;
+        let (x, y) = (1+(blen % 3), 2+(blen / 3));
+        self.layout.add_child(x, y+1, &new_check);
 
-        let blen = buttons.len() as u32;
-        let (x, y) = (1+(blen % 2), 2+(blen / 2));
-        self.layout.add_child(x, y+1, &new_label);
-
-        buttons.push(new_label);
+        boxes.push(new_check);
     }
 
     fn send_money(&self)
     {
-        //convert balance to int
-        let curr_bal = self.curr_balance.text();
-        let i: i32 = curr_bal.parse().unwrap_or(0);
 
-        let id = self.message_title.text();
+        let mut total_amount = 0;
+        let mut all_peers: String = "".to_owned();
 
-        //convert sent $ to int
-        let amount = self.message_content.text();
-        let j: i32 = amount.parse().unwrap_or(0);
+        //check_state returns a checkbox, not a bool, so this checkbox is being used as a bool to compare the two
+        let mut new_check = Default::default();
+        nwg::CheckBox::builder()
+            .check_state(nwg::CheckBoxState::Checked)
+            .parent(&self.window)
+            .build(&mut new_check)
+            .expect("Failed to build button");
 
-        //update balance
-        let result = i - j;
-        self.curr_balance.set_text(&(result.to_string()));
-        
-        println!("This is the ID: {}, and this is the amount: {}", id, amount);
+        let boxes = self.boxes.borrow_mut();
+        let mut checks: Vec::<String> = Vec::<String>::new();
+        for n in 0..boxes.len()
+        {
+            if boxes[n].check_state().eq(&new_check.check_state())
+            {
+                checks.push(boxes[n].text());
+            }
+        }
+
+        for n in 0..checks.len()
+        {
+            //convert balance to int
+            let curr_bal = self.curr_balance.text();
+            let i: i32 = curr_bal.parse().unwrap_or(0);
+
+            //convert sent $ to int
+            let sent_amount = self.message_content.text();
+            let j: i32 = sent_amount.parse().unwrap_or(0);
+
+            total_amount += j;
+
+            //update balance
+            let result = i - j;
+            self.curr_balance.set_text(&(result.to_string()));
+
+            if checks.len() == 1
+            {
+                all_peers.push_str(&checks[n]);
+            }
+            else if n < checks.len()-1
+            {
+                all_peers.push_str(&checks[n]);
+                all_peers.push_str(", ");
+            }
+            else
+            {
+                all_peers.push_str("and ");
+                all_peers.push_str(&checks[n]);
+            }
+
+            println!("This is the ID: {}, and this is the amount: {}", boxes[n].text(), sent_amount);
+        }
+
+        let mut test_s: String = "Sent total of $".to_owned();
+        test_s.push_str(&total_amount.to_string());
+        test_s.push_str(" to ");
+        test_s.push_str(&all_peers);
+
+        nwg::simple_message("Transaction Successful", &test_s);
+
+        self.message_title.set_text("");
+        self.message_content.set_text("");
     }
 
     fn exit(&self) {
@@ -117,23 +170,3 @@ fn main() {
     
     nwg::dispatch_thread_events();
 }
-
-// fn main() {
-//     // Create a new blockchain (we would ideally read from disk and update from P2P)
-//     let mut blockchain = Blockchain::new(2);
-//     // Peers (peer id) doing transaction
-//     let alice = 33;
-//     let bob = 49;
-//     // Create the transaction
-//     let transaction = Transaction::new(alice, bob, 100);
-//     // Add the transaction to the blockchain
-//     blockchain.add_transaction(transaction).expect("Failed to add new transaction");
-//     // Make another transaction in the opposite direction
-//     blockchain.add_transaction(Transaction::new(bob, alice, 50)).unwrap();
-//     // Print out all blocks
-//     let serial = serde_json::to_string(&blockchain).unwrap();
-//     println!("Testing serialization: {}", serial);
-//     let deserial: Value = serde_json::from_str(&serial).unwrap();
-//     println!("Testing deserialization: {}", deserial);
-//     for block in blockchain.block_chain() {
-//         println!("Block {:?}", block);
