@@ -106,47 +106,65 @@ impl MessageBank {
             }
         }
 
-        for n in 0..checks.len()
+        if !self.message_content.text().chars().all(char::is_numeric)
         {
-            //convert balance to int
-            let curr_bal = self.curr_balance.text();
-            let i: i32 = curr_bal.parse().unwrap_or(0);
-
-            //convert sent $ to int
-            let sent_amount = self.message_content.text();
-            let j: i32 = sent_amount.parse().unwrap_or(0);
-
-            total_amount += j;
-
-            //update balance
-            let result = i - j;
-            self.curr_balance.set_text(&(result.to_string()));
-
-            if checks.len() == 1
-            {
-                all_peers.push_str(&checks[n]);
-            }
-            else if n < checks.len()-1
-            {
-                all_peers.push_str(&checks[n]);
-                all_peers.push_str(", ");
-            }
-            else
-            {
-                all_peers.push_str("and ");
-                all_peers.push_str(&checks[n]);
-            }
-
-            println!("This is the ID: {}, and this is the amount: {}", boxes[n].text(), sent_amount);
+            nwg::simple_message("Error", "Sent amount must be a number");
         }
+        else if self.message_content.text().chars().nth(0).unwrap().eq(&'-')
+        {
+            nwg::simple_message("Error", "Sent amount cannot be negative");
+        }
+        else if checks.len() == 0
+        {
+            nwg::simple_message("Error", "Please select at least 1 peer");
+        }
+        else if self.message_content.text().eq("0") || self.message_content.text().eq("")// || (self.message_content.text().find("-") !=)
+        {
+            nwg::simple_message("Error", "Please add an amount to send");
+        }
+        else
+        {
+            for n in 0..checks.len()
+            {
+                //convert balance to int
+                let curr_bal = self.curr_balance.text();
+                let i: i32 = curr_bal.parse().unwrap_or(0);
 
-        let mut test_s: String = "Sent total of $".to_owned();
-        test_s.push_str(&total_amount.to_string());
-        test_s.push_str(" to ");
-        test_s.push_str(&all_peers);
+                //convert sent $ to int
+                let sent_amount = self.message_content.text();
+                let j: i32 = sent_amount.parse().unwrap_or(0);
 
-        nwg::simple_message("Transaction Successful", &test_s);
+                total_amount += j;
 
+                //update balance
+                let result = i - j;
+                self.curr_balance.set_text(&(result.to_string()));
+
+                if checks.len() == 1
+                {
+                    all_peers.push_str(&checks[n]);
+                }
+                else if n < checks.len()-1
+                {
+                    all_peers.push_str(&checks[n]);
+                    all_peers.push_str(", ");
+                }
+                else
+                {
+                    all_peers.push_str("and ");
+                    all_peers.push_str(&checks[n]);
+                }
+
+                println!("This is the ID: {}, and this is the amount: {}", boxes[n].text(), sent_amount);
+            }
+
+            let mut test_s: String = "Sent total of $".to_owned();
+            test_s.push_str(&total_amount.to_string());
+            test_s.push_str(" to ");
+            test_s.push_str(&all_peers);
+
+            nwg::simple_message("Transaction Successful", &test_s);
+        }
         self.message_title.set_text("");
         self.message_content.set_text("");
     }
