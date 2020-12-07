@@ -1,17 +1,20 @@
 
-use lazy_static::*;
-use sha2::{Sha256, Digest};
-use chrono::{DateTime, Utc};
-use std::sync::Arc;
+// Local imports
 use crate::blockchain::transaction::{Transaction, NULL_TRANSACTION};
+// Std imports
+use std::sync::Arc;
+// External imports
+use lazy_static::*;
+use serde::{Serialize, Deserialize};
+use sha2::{Sha256, Digest};
 
 const HASH_SIZE: usize = 32;
 const NULL_HASH: &'static [u8; HASH_SIZE] = b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Block {
     index: u64,
-    timestamp: DateTime<Utc>,
+    // timestamp: DateTime<Utc>,
     hash: Arc<[u8; HASH_SIZE]>,
     previous_hash: Arc<[u8; HASH_SIZE]>,
     transaction: Transaction,
@@ -23,10 +26,10 @@ impl Block {
     pub fn update_hash(&mut self) {
         let mut hasher = Sha256::new();
         // Hash the timestamp (only supports 584 years and will break around the year 2600)
-        hasher.update(self.timestamp().timestamp_nanos().to_le_bytes());
+        // hasher.update(self.timestamp().timestamp_nanos().to_le_bytes());
         // Hash the transaction
-        hasher.update(self.transaction().sender().to_le_bytes());
-        hasher.update(self.transaction().receiver().to_le_bytes());
+        hasher.update(self.transaction().sender().as_bytes());
+        hasher.update(self.transaction().receiver().as_bytes());
         hasher.update(self.transaction().amount().to_le_bytes());
         // Include previous hash in hash
         hasher.update(self.previous_hash().as_ref());
@@ -45,13 +48,13 @@ impl Block {
     }
     // Constructor
     pub fn new(transaction: Transaction, index: u64, previous_hash: Arc<[u8; HASH_SIZE]>) -> Self {
-        let timestamp = Utc::now();
+        // let timestamp = Utc::now();
         let mut block = Self {
             hash: Arc::new(*NULL_HASH),
             nonce: 0,
             index,
             previous_hash,
-            timestamp,
+            // timestamp,
             transaction,
         };
         // Set the block's hash from its properties
@@ -72,11 +75,11 @@ impl Block {
         self.previous_hash.clone()
     }
     pub fn transaction(&self) -> Transaction {
-        self.transaction
+        self.transaction.clone()
     }
-    pub fn timestamp(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
+    // pub fn timestamp(&self) -> DateTime<Utc> {
+    //     self.timestamp
+    // }
     pub fn nonce(&self) -> u64 {
         self.nonce
     }
@@ -93,7 +96,7 @@ lazy_static! {
             index: 0,
             previous_hash: Arc::new(*NULL_HASH),
             transaction: NULL_TRANSACTION,
-            timestamp: DateTime::parse_from_rfc3339("2020-10-11T08:49:15Z").unwrap().with_timezone(&Utc),
+            // timestamp: DateTime::parse_from_rfc3339("2020-10-11T08:49:15Z").unwrap().with_timezone(&Utc),
         };
         // Set the block's hash from its properties
         block.update_hash();

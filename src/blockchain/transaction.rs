@@ -1,30 +1,32 @@
 
-// TODO: Replace PeerId type with LibP2P peer id type
-pub type PeerId = u64;
+use serde::{Serialize, Deserialize};
+use libp2p::PeerId;
+
+type PeerIdString = String;
 
 pub type CurrencyType = u64;
 
-#[derive(Debug, Copy, Clone)]
-#[repr(packed)]
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
-    sender: PeerId,
-    receiver: PeerId,
-    amount: CurrencyType
+    pub sender: PeerIdString,
+    pub receiver: PeerIdString,
+    pub amount: CurrencyType
 }
 
 impl Transaction {
     pub fn new(sender: PeerId, receiver: PeerId, amount: CurrencyType) -> Self {
         Self {
-            sender,
-            receiver,
+            sender: sender.to_string(),
+            receiver: receiver.to_string(),
             amount
         }
     }
-    pub fn sender(&self) -> PeerId {
-        self.sender
+    pub fn sender(&self) -> PeerIdString {
+        self.sender.clone()
     }
-    pub fn receiver(&self) -> PeerId {
-        self.receiver
+    pub fn receiver(&self) -> PeerIdString {
+        self.receiver.clone()
     }
     pub fn amount(&self) -> CurrencyType {
         self.amount
@@ -32,7 +34,7 @@ impl Transaction {
 }
 
 pub(in super) const NULL_TRANSACTION: Transaction = Transaction {
-    sender: 0,
-    receiver: 0,
+    sender: String::new(),
+    receiver: String::new(),
     amount: 0
 };
