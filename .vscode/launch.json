@@ -11,8 +11,8 @@
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=hello_world",
-                    "--package=hello_world"
+                    //"--bin=hello_world",
+                    //"--package=hello_world"
                 ],
                 "filter": {
                     "name": "hello_world",

@@ -49,6 +49,8 @@ lazy_static! {
     pub static ref MY_PEER_ID: PeerId = PeerId::from_public_key(get_keypair().public());
 
     pub static ref SWARM: Mutex<Swarm<Gossipsub>> = Mutex::new(spawn_swarm(get_keypair(), MY_PEER_ID.clone()));
+
+    pub static ref MY_GUI_BAL: RwLock<u64> = RwLock::new(BLOCKCHAIN.read().unwrap().get_balance(MY_PEER_ID.to_string()));
 }
 
 #[derive(Default, NwgUi)]
@@ -88,12 +90,17 @@ pub struct MessageBank {
     #[nwg_layout_item(layout: layout, col: 0, row: 2, col_span: 2)]
     #[nwg_events( OnButtonClick: [MessageBank::send_money])]
     send_money: nwg::Button,
+
+    #[nwg_control(text: "Update Balance", focus: true)]
+    #[nwg_layout_item(layout: layout, col: 2, row: 2, col_span: 1)]
+    #[nwg_events( OnButtonClick: [MessageBank::update])]
+    update: nwg::Button,
     
-    #[nwg_control(text:"Current Balance: ")]
+    #[nwg_control(text:"Current Balance ")]
     #[nwg_layout_item(layout: layout, col: 2, row: 1, col_span: 1)]
     balance: nwg::Label,
 
-    #[nwg_control(text:"10000")]
+    #[nwg_control(text:"5000")]
     #[nwg_layout_item(layout: layout, col: 3, row: 1, col_span: 1)]
     curr_balance: nwg::Label,
 
@@ -102,6 +109,11 @@ pub struct MessageBank {
 }
 
 impl MessageBank {
+
+    pub fn update(&self)
+    {
+        self.curr_balance.set_text(BLOCKCHAIN.read().unwrap().get_balance(MY_PEER_ID.to_string()).to_string().as_str());
+    }
 
     pub fn add_peer(&self) {
         let title = self.peer_id.text();
@@ -208,6 +220,7 @@ impl MessageBank {
                 SWARM.lock().unwrap().publish(&Topic::new(BLOCKCHAIN_TOPIC.into()), serialized_block.as_bytes());
                 // Set text for balance from blockchain
                 self.curr_balance.set_text(BLOCKCHAIN.read().unwrap().get_balance(MY_PEER_ID.to_string()).to_string().as_str());
+
             }
             if positive
             {
@@ -253,14 +266,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             } else {
             None
             };
-            //println!("here it is {:?}", new_peer);
+            
+            _ui.curr_balance.set_text(format!("{}", MY_GUI_BAL.read().unwrap()).as_str());
+            _ui.window.set_text(format!("Banking P2P - {}", MY_PEER_ID.to_string()).as_str());
             if let Some(ref peer_id) = new_peer {
-                _ui.peer_id.set_text(&new_peer.unwrap().to_string()[6..]);
+                _ui.peer_id.set_text(&new_peer.unwrap().to_string());
                 _ui.add_peer();
             }
             
             nwg::dispatch_thread_events_with_callback(move || {
-        })
+
+            });
         }
     });
 
@@ -269,7 +285,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Logged in as {}", MY_PEER_ID.to_string());
     
     // Create a Swarm to manage peers and events
-    // let mut swarm = spawn_swarm(get_keypair(), MY_PEER_ID.clone());
 
     // Listen on all interfaces and whatever port the OS assigns
     libp2p::Swarm::listen_on(&mut *SWARM.lock().unwrap(), "/ip4/0.0.0.0/tcp/4000".parse().expect("Invalid swarm ip")).expect("Failed to start swarm listen");
@@ -293,9 +308,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // TODO: On exit or new peer connection save to file with ip from
 
     // TODO: Cleanup cloning and things here if possible
-    let mut peer_ids: Vec<PeerId> = swarm.all_peers().map(|peer_id| peer_id.clone()).collect();
-    let peers_data = peer_ids.iter().map(|peer_id| PeerData::new(peer_id, &mut swarm)).collect();
-    save_known_peers(peers_data);
+    //let mut peer_ids: Vec<PeerId> = swarm.all_peers().map(|peer_id| peer_id.clone()).collect();
+    //let peers_data = peer_ids.iter().map(|peer_id| PeerData::new(peer_id, &mut swarm)).collect();
+    //save_known_peers(peers_data);
 
     // Read full lines from stdin
     let mut stdin = io::BufReader::new(io::stdin()).lines();
@@ -343,16 +358,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let block = serde_json::from_slice(message.data.as_slice()).expect("Failed to parse incoming message");
                             // Add block
                             BLOCKCHAIN.write().unwrap().add_block(block);
+                            if BLOCKCHAIN.read().unwrap().latest_block().transaction().receiver.eq(&MY_PEER_ID.to_string())
+                            {
+                                *MY_GUI_BAL.write().unwrap() = BLOCKCHAIN.read().unwrap().get_balance(MY_PEER_ID.to_string());
+                                println!("{:?}", MY_GUI_BAL.read().unwrap());
+                            }
                         }
                         // TODO: Use another topic to send whole blockchain to new peers so they're up to date (if we have time)
                     },
                     GossipsubEvent::Subscribed{peer_id, ..} => {
-                        //println!("HERE HUH??? {}", peer_id.to_string());
                         tx.send(peer_id).unwrap();
                     },
-                    // GossipsubEvent::Unsubscribed{peer_id, ..} => {
-                    //     // REMOVE PEER
-                    // },
                     _ => {}
                     
                 },
