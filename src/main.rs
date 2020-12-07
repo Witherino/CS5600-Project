@@ -1,12 +1,14 @@
 // Modules
 mod swarm;
 mod peer_data;
+mod blockchain;
 
 extern crate native_windows_gui as nwg;
 extern crate native_windows_derive as nwd;
 // Local imports
 use crate::swarm::{spawn_swarm, BLOCKCHAIN_TOPIC, IDENTIFY_TOPIC, dial_address};
 use crate::peer_data::{get_keypair, get_known_peers, save_known_peer, PeerData, save_known_peers};
+use crate::blockchain::*;
 // Std imports
 use std::str;
 use std::env;
@@ -16,24 +18,38 @@ use std::{
 };
 // External imports
 use futures::prelude::*;
-use async_std::task;
-use libp2p::gossipsub::{GossipsubEvent, Topic};
+use async_std::{task, io};
+use libp2p::gossipsub::{GossipsubEvent, Topic, Gossipsub};
 use serde::{Serialize, Deserialize};
 use futures::StreamExt;
+use libp2p::Swarm;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::core::Multiaddr;
 use libp2p::PeerId;
+use lazy_static::*;
 
 use std::thread;
 use std::sync::mpsc::{Receiver, channel, Sender};
+use std::sync::{RwLock, Mutex};
 
 // Gui imports
 use nwd::NwgUi;
 use nwg::NativeUi;
 use std::cell::RefCell;
+use libp2p::core::network::Peer;
+use std::str::FromStr;
 
 const DEFAULT_PORT: u16 = 4000;
 const MAX_PEERS: usize = 10;
+
+// JEFF ADDED
+lazy_static! {
+    pub static ref BLOCKCHAIN: RwLock<Blockchain> = RwLock::new(Blockchain::new(1));
+
+    pub static ref MY_PEER_ID: PeerId = PeerId::from_public_key(get_keypair().public());
+
+    pub static ref SWARM: Mutex<Swarm<Gossipsub>> = Mutex::new(spawn_swarm(get_keypair(), MY_PEER_ID.clone()));
+}
 
 #[derive(Default, NwgUi)]
 pub struct MessageBank {
@@ -167,7 +183,6 @@ impl MessageBank {
                     break;
                 }
                 total_amount += sent_amount_int;
-                self.curr_balance.set_text(&(result.to_string()));
 
                 if checks.len() == 1
                 {
@@ -183,6 +198,16 @@ impl MessageBank {
                     all_peers.push_str("and ");
                     all_peers.push_str(&checks[n]);
                 }
+
+                // JEFF ADDED
+                let transaction = Transaction::new(MY_PEER_ID.clone(), PeerId::from_str(&checks[n]).expect("Invalid PeerId"), sent_amount_int as u64);
+                // Add transaction to local blockchain
+                BLOCKCHAIN.write().unwrap().add_transaction(transaction);
+                let serialized_block = serde_json::to_string(BLOCKCHAIN.read().unwrap().latest_block()).expect("Failed to serialize block");
+                // Send to peers
+                SWARM.lock().unwrap().publish(&Topic::new(BLOCKCHAIN_TOPIC.into()), serialized_block.as_bytes());
+                // Set text for balance from blockchain
+                self.curr_balance.set_text(BLOCKCHAIN.read().unwrap().get_balance(MY_PEER_ID.to_string()).to_string().as_str());
             }
             if positive
             {
@@ -209,38 +234,9 @@ impl MessageBank {
 
 }
 
-// TEMP: Blockchain data
-type Block = i32;
-#[derive(Serialize, Deserialize, Debug)]
-struct BlockChainDummy {
-    block_chain: Vec<Block>,
-    difficulty: i32,
-}
-
-fn process_data_stream(msg: &str, _id: String, _peer_id: String) {
-    println!("This is the message: {}", msg);
-    // let p = env::current_dir().unwrap();
-    // let temp = p.to_string_lossy();
-    // let mut path = temp.to_string();
-    // let bar = "/src/peer_ids.json".to_string();
-    // path.push_str(&bar);
-    //
-    // let path_present = std::path::Path::new(&path).exists();
-    //
-    // //fs::write(path, msg).expect("Unable to write file");
-    // if path_present{
-    //     let mut file = OpenOptions::new().append(true).open(path).expect("File open failed");
-    //     file.write_all(msg.as_bytes()).expect("write failed");
-    // }
-    // else{
-    //     let mut f = File::create(path).expect("Unable to create file");
-    //     f.write_all(msg.as_bytes()).expect("Unable to write data");
-    // }
-}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let (tx, rx) = channel();
-
 
     thread::spawn(move || {
 
@@ -269,26 +265,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     println!("Blockchain CS5600");
-    // Get our peer data to start swarm
-    let my_keypair = get_keypair();
-    let my_peer_id = PeerId::from_public_key(my_keypair.public());
 
-    println!("Me {}", my_peer_id.to_string());
+    println!("Logged in as {}", MY_PEER_ID.to_string());
     
     // Create a Swarm to manage peers and events
-    let mut swarm = spawn_swarm(my_keypair, my_peer_id.clone());
-
-    println!("Spawned Swarm");
+    // let mut swarm = spawn_swarm(get_keypair(), MY_PEER_ID.clone());
 
     // Listen on all interfaces and whatever port the OS assigns
-    libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/4000".parse().expect("Invalid swarm ip")).expect("Failed to start swarm listen");
-
-    println!("Swarm Listening");
+    libp2p::Swarm::listen_on(&mut *SWARM.lock().unwrap(), "/ip4/0.0.0.0/tcp/4000".parse().expect("Invalid swarm ip")).expect("Failed to start swarm listen");
 
     // Reach out to another node if specified
     if let Some(to_dial) = std::env::args().nth(1) {
         match to_dial.parse() {
-            Ok(address) => dial_address(address, &mut swarm),
+            Ok(address) => dial_address(address, &mut *SWARM.lock().unwrap()),
             Err(err) => eprintln!("Failed to parse address to dial: {:?}", err),
         }
     }
@@ -298,7 +287,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Connect to all previously saved known peers
     for known_peer in known_peers.into_iter().take(MAX_PEERS) {
         let address = known_peer.ip();
-        dial_address(address, &mut swarm);
+        dial_address(address, &mut *SWARM.lock().unwrap());
     }
 
     // TODO: On exit or new peer connection save to file with ip from
@@ -308,26 +297,54 @@ fn main() -> Result<(), Box<dyn Error>> {
     let peers_data = peer_ids.iter().map(|peer_id| PeerData::new(peer_id, &mut swarm)).collect();
     save_known_peers(peers_data);
 
+    // Read full lines from stdin
+    let mut stdin = io::BufReader::new(io::stdin()).lines();
+
     let mut listening = false;
     task::block_on(future::poll_fn(move |cx: &mut Context<'_>| {
-        swarm.publish(&Topic::new(BLOCKCHAIN_TOPIC.into()), "HELLO BLOCKCHAIN".as_bytes());
-        swarm.publish(&Topic::new(IDENTIFY_TOPIC.into()), "HELLO IDENTIFY".as_bytes());
+        loop {
+            match stdin.try_poll_next_unpin(cx)? {
+                Poll::Ready(Some(line)) => {
+                    if line.starts_with("send ") {
+                        let mut tokens = line.split_ascii_whitespace();
+                        let amount_str = tokens.next().expect("send requires an amount");
+                        let receiver_str = tokens.next().expect("send requires a receiver");
+                        let amount = amount_str.parse().expect("invalid amount in send (expected a valid number)");
+                        let receiver_peer = PeerId::from_str(receiver_str).expect("invalid peer id in send");
+
+                        // Create transaction
+                        let transaction = Transaction::new(MY_PEER_ID.clone(), receiver_peer, amount);
+                        // Update local blockchain
+                        BLOCKCHAIN.write().unwrap().add_transaction(transaction);
+
+                        // Send to the rest of the swarm
+                        let serialized_block = serde_json::to_string(BLOCKCHAIN.read().unwrap().latest_block()).expect("Failed to serialize block");
+                        SWARM.lock().unwrap().publish(&Topic::new(BLOCKCHAIN_TOPIC.into()), serialized_block.as_bytes());
+                    } else if line.starts_with("bal ") {
+                        println!("Balance: ${}", BLOCKCHAIN.read().unwrap().get_balance(line[4..].into()));
+                    } else if line == "bal" {
+                        println!("Balance: ${}", BLOCKCHAIN.read().unwrap().get_balance(MY_PEER_ID.to_string()));
+                    } else {
+                        eprintln!("Unknown command");
+                    }
+                },
+                Poll::Ready(None) => panic!("Stdin closed"),
+                Poll::Pending => break,
+            }
+        }
 
         loop {
-            println!("swarm has {} peers", swarm.all_peers().count());
-            
-            match swarm.poll_next_unpin(cx) {
+            match SWARM.lock().unwrap().poll_next_unpin(cx) {
                 Poll::Ready(Some(gossip_event)) => match gossip_event {
                     GossipsubEvent::Message(peer_id, id, message) => {
-                        println!("MESSAGE");
                         let topic = message.topics.first().unwrap().as_str();
                         if topic == BLOCKCHAIN_TOPIC {
-                            println!("BLOCKCHAIN TRANSACTION RECEIVED {}", str::from_utf8(message.data.as_slice()).expect("Failed to create a string from byte data from message"));
                             // Parse incoming message as a block
-                            let transaction: Block = serde_json::from_slice(message.data.as_slice()).expect("Failed to parse incoming message");
+                            let block = serde_json::from_slice(message.data.as_slice()).expect("Failed to parse incoming message");
+                            // Add block
+                            BLOCKCHAIN.write().unwrap().add_block(block);
                         }
-
-                        process_data_stream(str::from_utf8(&message.data).unwrap(), id.to_string(), peer_id.to_string())
+                        // TODO: Use another topic to send whole blockchain to new peers so they're up to date (if we have time)
                     },
                     GossipsubEvent::Subscribed{peer_id, ..} => {
                         //println!("HERE HUH??? {}", peer_id.to_string());
@@ -344,7 +361,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         if !listening {
-            for address in libp2p::Swarm::listeners(&swarm) {
+            for address in libp2p::Swarm::listeners(&*SWARM.lock().unwrap()) {
                 println!("Listening on {:?}", address);
                 listening = true;
             }
